@@ -1,0 +1,13 @@
+# FastAPI + server
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9
+
+# ML
+numpy==1.26.4
+pillow==10.3.0
+albumentations==1.4.8
+opencv-python-headless==4.9.0.80
+
+# torchvision installed separately in Dockerfile (CPU wheel)
+# torch and torchvision pinned in Dockerfile

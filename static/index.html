@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GlaucoVision — Multimodal Detection</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=IBM+Plex+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ─── TOKENS ──────────────────────────────────────────────── */
+    :root {
+      --bg:           #080c14;
+      --surface:      #0e1420;
+      --surface-2:    #141b2b;
+      --border:       #1e2d47;
+      --border-hi:    #2a4060;
+      --teal:         #00c9b1;
+      --teal-dim:     #00896e;
+      --teal-glow:    rgba(0, 201, 177, 0.15);
+      --amber:        #f5a623;
+      --red:          #ff5252;
+      --red-glow:     rgba(255, 82, 82, 0.15);
+      --purple:       #a78bfa;
+      --purple-glow:  rgba(167, 139, 250, 0.12);
+      --text:         #dce8f5;
+      --text-2:       #7a93b2;
+      --text-3:       #3d5470;
+      --mono:         'IBM Plex Mono', monospace;
+      --sans:         'DM Sans', sans-serif;
+      --serif:        'Playfair Display', serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 60px 60px;
+      opacity: 0.3;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 0 24px 80px;
+    }
+
+    /* ─── HEADER ──────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 32px 0 48px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 56px;
+    }
+
+    .logo { display: flex; align-items: baseline; gap: 12px; }
+
+    .logo-mark {
+      width: 36px; height: 36px;
+      border: 2px solid var(--teal);
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .logo-mark::after {
+      content: '';
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      border: 2px solid var(--teal);
+      box-shadow: 0 0 8px var(--teal);
+    }
+
+    .logo-name { font-family: var(--serif); font-size: 1.5rem; color: var(--text); letter-spacing: 0.02em; }
+    .logo-name span { color: var(--teal); }
+
+    .header-right { display: flex; align-items: center; gap: 14px; }
+
+    .status-pill {
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      color: var(--text-3);
+      display: flex; align-items: center; gap: 6px;
+    }
+    .status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--text-3);
+      animation: blink 2s ease-in-out infinite;
+    }
+    .status-dot.live { background: var(--teal); }
+    .status-dot.demo { background: var(--amber); }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    .header-badge {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--teal);
+      border: 1px solid var(--teal-dim);
+      padding: 4px 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    /* ─── HERO ────────────────────────────────────────────────── */
+    .hero { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; }
+    @media (max-width: 700px) { .hero { grid-template-columns: 1fr; } }
+
+    /* ─── PANEL ───────────────────────────────────────────────── */
+    .panel { background: var(--surface); border: 1px solid var(--border); padding: 28px; }
+
+    .panel-label {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--teal);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .panel-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* ─── DROP ZONES ──────────────────────────────────────────── */
+    .drop-stack { display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px; }
+
+    .drop-zone {
+      border: 1.5px dashed var(--border-hi);
+      padding: 22px 18px;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+    }
+    .drop-zone.fundus:hover, .drop-zone.fundus.drag-over { border-color: var(--teal);   background: var(--teal-glow); }
+    .drop-zone.oct:hover,    .drop-zone.oct.drag-over    { border-color: var(--purple); background: var(--purple-glow); }
+
+    .drop-zone input[type="file"] {
+      position: absolute; inset: 0;
+      opacity: 0; cursor: pointer;
+      width: 100%; height: 100%;
+    }
+
+    .drop-row { display: flex; align-items: center; gap: 14px; }
+
+    .drop-icon {
+      width: 38px; height: 38px;
+      flex-shrink: 0;
+      border: 1.5px solid var(--border-hi);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .drop-zone.fundus .drop-icon { border-color: var(--teal-dim); }
+    .drop-zone.oct    .drop-icon { border-color: var(--purple); }
+    .drop-icon svg { width: 17px; height: 17px; }
+    .drop-zone.fundus .drop-icon svg { stroke: var(--teal); }
+    .drop-zone.oct    .drop-icon svg { stroke: var(--purple); }
+
+    .drop-type {
+      font-family: var(--mono);
+      font-size: 0.58rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+    .drop-zone.fundus .drop-type { color: var(--teal); }
+    .drop-zone.oct    .drop-type { color: var(--purple); }
+
+    .drop-title { font-size: 0.85rem; font-weight: 500; color: var(--text); margin-bottom: 1px; }
+    .drop-sub   { font-family: var(--mono); font-size: 0.6rem; color: var(--text-3); letter-spacing: 0.04em; }
+
+    .drop-chosen {
+      display: none;
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      color: var(--text-2);
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+      align-items: center; gap: 8px;
+    }
+    .drop-chosen.visible { display: flex; }
+    .drop-chosen-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .remove-btn {
+      cursor: pointer; color: var(--text-3);
+      font-size: 1rem; line-height: 1;
+      background: none; border: none; padding: 0 2px;
+      transition: color 0.15s;
+    }
+    .remove-btn:hover { color: var(--red); }
+
+    /* preview strip */
+    .preview-strip { display: none; gap: 8px; margin-bottom: 16px; }
+    .preview-strip.visible { display: grid; grid-template-columns: 1fr 1fr; }
+    .preview-cell { position: relative; }
+    .preview-cell img { width: 100%; height: 106px; object-fit: cover; border: 1px solid var(--border); display: block; }
+    .preview-cell-label {
+      position: absolute; top: 6px; left: 6px;
+      font-family: var(--mono); font-size: 0.55rem;
+      letter-spacing: 0.1em; color: var(--teal);
+      background: rgba(8,12,20,0.85); padding: 2px 7px;
+    }
+    .preview-cell-label.oct-lbl { color: var(--purple); }
+
+    /* ─── BUTTON ──────────────────────────────────────────────── */
+    .btn-analyze {
+      width: 100%;
+      background: transparent;
+      border: 1.5px solid var(--teal);
+      color: var(--teal);
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 14px;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+    }
+    .btn-analyze:hover:not(:disabled) { background: var(--teal); color: var(--bg); box-shadow: 0 0 20px var(--teal-glow); }
+    .btn-analyze:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .spinner {
+      width: 13px; height: 13px;
+      border: 2px solid currentColor;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .btn-analyze.loading .spinner  { display: block; }
+    .btn-analyze.loading .btn-text { display: none; }
+
+    /* ─── RESULTS ─────────────────────────────────────────────── */
+    .results-panel { display: flex; flex-direction: column; gap: 16px; }
+
+    .results-placeholder {
+      background: var(--surface); border: 1px solid var(--border);
+      padding: 56px 32px; text-align: center;
+    }
+    .results-placeholder p {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--text-3);
+      letter-spacing: 0.08em;
+      line-height: 1.9;
+    }
+
+    .verdict-card {
+      background: var(--surface); border: 1px solid var(--border);
+      padding: 28px 32px;
+      display: none;
+      animation: fadeUp 0.4s ease both;
+    }
+    .verdict-card.visible { display: block; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .verdict-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
+    .verdict-label { font-family: var(--mono); font-size: 0.6rem; color: var(--text-2); letter-spacing: 0.14em; text-transform: uppercase; }
+
+    .verdict-chip {
+      font-family: var(--mono); font-size: 0.7rem;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 5px 14px; border: 1px solid;
+    }
+    .verdict-chip.glaucoma { color: var(--red);  border-color: var(--red);  background: var(--red-glow); }
+    .verdict-chip.normal   { color: var(--teal); border-color: var(--teal); background: var(--teal-glow); }
+
+    .verdict-diagnosis { font-family: var(--serif); font-size: 1.9rem; line-height: 1.1; margin-bottom: 6px; }
+    .verdict-diagnosis.glaucoma { color: var(--red); }
+    .verdict-diagnosis.normal   { color: var(--teal); }
+
+    .verdict-sub { font-size: 0.8rem; color: var(--text-2); margin-bottom: 26px; line-height: 1.5; }
+
+    /* probability bar */
+    .prob-row { margin-bottom: 18px; }
+    .prob-labels { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 0.62rem; color: var(--text-2); letter-spacing: 0.08em; margin-bottom: 8px; }
+    .prob-track { height: 5px; background: var(--surface-2); border: 1px solid var(--border); overflow: hidden; }
+    .prob-fill { height: 100%; width: 0%; transition: width 1s cubic-bezier(0.4,0,0.2,1); }
+    .prob-fill.glaucoma { background: var(--red); }
+    .prob-fill.normal   { background: var(--teal); }
+
+    /* model rows */
+    .model-rows { display: flex; flex-direction: column; gap: 1px; background: var(--border); border: 1px solid var(--border); margin-bottom: 16px; }
+    .model-row { background: var(--surface); padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; }
+    .model-row-label { font-family: var(--mono); font-size: 0.6rem; color: var(--text-3); letter-spacing: 0.1em; text-transform: uppercase; min-width: 80px; }
+    .model-row-bar-wrap { flex: 1; margin: 0 14px; height: 3px; background: var(--surface-2); }
+    .model-row-bar { height: 100%; width: 0%; transition: width 1.2s cubic-bezier(0.4,0,0.2,1); }
+    .fundus-bar { background: var(--teal); }
+    .oct-bar    { background: var(--purple); }
+    .fusion-bar { background: var(--text-2); }
+    .model-row-value { font-family: var(--mono); font-size: 0.82rem; font-weight: 500; min-width: 44px; text-align: right; }
+    .fundus-val { color: var(--teal); }
+    .oct-val    { color: var(--purple); }
+    .fusion-val { color: var(--text); }
+
+    /* metrics */
+    .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); border: 1px solid var(--border); }
+    .metric-cell { background: var(--surface); padding: 13px 16px; }
+    .metric-name { font-family: var(--mono); font-size: 0.58rem; color: var(--text-3); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 4px; }
+    .metric-value { font-family: var(--mono); font-size: 1.05rem; font-weight: 500; color: var(--text); }
+
+    /* demo + disclaimer */
+    .demo-notice {
+      background: var(--surface); border: 1px solid var(--border);
+      border-left: 2px solid var(--amber);
+      padding: 12px 16px;
+      font-family: var(--mono); font-size: 0.62rem;
+      color: var(--amber); letter-spacing: 0.04em; line-height: 1.6;
+      display: none;
+    }
+    .demo-notice.visible { display: block; }
+
+    .disclaimer {
+      background: var(--surface); border: 1px solid var(--border);
+      border-left: 2px solid var(--amber);
+      padding: 14px 18px;
+      font-family: var(--mono); font-size: 0.62rem;
+      color: var(--text-2); line-height: 1.7; letter-spacing: 0.03em;
+      display: none;
+    }
+    .disclaimer.visible { display: block; }
+    .disclaimer strong { color: var(--amber); letter-spacing: 0.08em; }
+
+    /* ─── INFO STRIP ──────────────────────────────────────────── */
+    .info-strip {
+      margin-top: 56px; padding-top: 32px;
+      border-top: 1px solid var(--border);
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 1px; background: var(--border);
+    }
+    @media (max-width: 700px) { .info-strip { grid-template-columns: 1fr 1fr; } }
+    .info-cell { background: var(--surface); padding: 20px; }
+    .info-cell-label { font-family: var(--mono); font-size: 0.58rem; color: var(--text-3); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 6px; }
+    .info-cell-value { font-family: var(--mono); font-size: 1rem; color: var(--teal); font-weight: 500; }
+
+    /* ─── TOAST ───────────────────────────────────────────────── */
+    .toast {
+      position: fixed; bottom: 28px; right: 28px;
+      background: var(--surface-2); border: 1px solid var(--red);
+      color: var(--red); font-family: var(--mono); font-size: 0.7rem;
+      letter-spacing: 0.06em; padding: 12px 20px; max-width: 340px;
+      z-index: 100; transform: translateY(20px); opacity: 0;
+      transition: all 0.3s ease; pointer-events: none;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+  </style>
+</head>
+
+<body>
+<div class="container">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo">
+      <div class="logo-mark"></div>
+      <span class="logo-name">Gluco<span>Vision</span></span>
+    </div>
+    <div class="header-right">
+      <div class="status-pill">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">checking…</span>
+      </div>
+      <span class="header-badge">Fundus + OCT · Multimodal</span>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <div class="hero">
+
+    <!-- LEFT — Upload -->
+    <div>
+      <div class="panel">
+        <div class="panel-label">Image Input</div>
+
+        <div class="drop-stack">
+
+          <!-- Fundus -->
+          <div class="drop-zone fundus" id="dropFundus">
+            <input type="file" id="fileFundus" accept="image/jpeg,image/png,image/jpg" />
+            <div class="drop-row">
+              <div class="drop-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M20.188 10.934C21.122 12 21.122 12 20.188 13.066C18.768 14.71 15.636 17 12 17C8.364 17 5.232 14.71 3.812 13.066C2.878 12 2.878 12 3.812 10.934C5.232 9.29 8.364 7 12 7C15.636 7 18.768 9.29 20.188 10.934Z"/>
+                </svg>
+              </div>
+              <div>
+                <div class="drop-type">Fundus</div>
+                <div class="drop-title">Color Retinal Photograph</div>
+                <div class="drop-sub">JPG / PNG · RGB image</div>
+              </div>
+            </div>
+            <div class="drop-chosen" id="chosenFundus">
+              <span class="drop-chosen-name" id="chosenFundusName"></span>
+              <button class="remove-btn" id="removeFundus">✕</button>
+            </div>
+          </div>
+
+          <!-- OCT -->
+          <div class="drop-zone oct" id="dropOct">
+            <input type="file" id="fileOct" accept="image/jpeg,image/png,image/jpg" />
+            <div class="drop-row">
+              <div class="drop-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="1"/>
+                  <path d="M3 9h18M3 15h18M9 3v18"/>
+                </svg>
+              </div>
+              <div>
+                <div class="drop-type">OCT B-scan</div>
+                <div class="drop-title">Optical Coherence Tomography</div>
+                <div class="drop-sub">JPG / PNG · Grayscale</div>
+              </div>
+            </div>
+            <div class="drop-chosen" id="chosenOct">
+              <span class="drop-chosen-name" id="chosenOctName"></span>
+              <button class="remove-btn" id="removeOct">✕</button>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Preview -->
+        <div class="preview-strip" id="previewStrip">
+          <div class="preview-cell">
+            <img id="previewFundus" src="" alt="Fundus" />
+            <span class="preview-cell-label">FUNDUS</span>
+          </div>
+          <div class="preview-cell">
+            <img id="previewOct" src="" alt="OCT" />
+            <span class="preview-cell-label oct-lbl">OCT B-SCAN</span>
+          </div>
+        </div>
+
+        <button class="btn-analyze" id="analyzeBtn" disabled>
+          <span class="spinner"></span>
+          <span class="btn-text">Run Analysis</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- RIGHT — Results -->
+    <div class="results-panel">
+
+      <div class="results-placeholder" id="placeholder">
+        <p>
+          Upload a fundus photograph<br />
+          and an OCT B-scan to begin.<br /><br />
+          <span style="color: var(--text-2)">ResNet50 · Weighted Fusion · α = 0.49</span>
+        </p>
+      </div>
+
+      <div class="demo-notice" id="demoNotice">
+        ⚠ DEMO MODE — Results are simulated. Upload <code>models/*.pth</code> for real inference.
+      </div>
+
+      <div class="verdict-card" id="verdictCard">
+
+        <div class="verdict-header">
+          <span class="verdict-label">Diagnosis</span>
+          <span class="verdict-chip" id="verdictChip">—</span>
+        </div>
+
+        <div class="verdict-diagnosis" id="verdictDiagnosis">—</div>
+        <div class="verdict-sub" id="verdictSub"></div>
+
+        <div class="prob-row">
+          <div class="prob-labels">
+            <span>P(Glaucoma) — Fusion</span>
+            <span id="probLabel">—</span>
+          </div>
+          <div class="prob-track">
+            <div class="prob-fill" id="probFill"></div>
+          </div>
+        </div>
+
+        <div class="model-rows">
+          <div class="model-row">
+            <span class="model-row-label">Fundus</span>
+            <div class="model-row-bar-wrap"><div class="model-row-bar fundus-bar" id="barFundus"></div></div>
+            <span class="model-row-value fundus-val" id="valFundus">—</span>
+          </div>
+          <div class="model-row">
+            <span class="model-row-label">OCT</span>
+            <div class="model-row-bar-wrap"><div class="model-row-bar oct-bar" id="barOct"></div></div>
+            <span class="model-row-value oct-val" id="valOct">—</span>
+          </div>
+          <div class="model-row">
+            <span class="model-row-label">Fusion α=0.49</span>
+            <div class="model-row-bar-wrap"><div class="model-row-bar fusion-bar" id="barFusion"></div></div>
+            <span class="model-row-value fusion-val" id="valFusion">—</span>
+          </div>
+        </div>
+
+        <div class="metrics-grid">
+          <div class="metric-cell">
+            <div class="metric-name">Prediction</div>
+            <div class="metric-value" id="metricPred" style="color:var(--teal)">—</div>
+          </div>
+          <div class="metric-cell">
+            <div class="metric-name">Fusion Prob.</div>
+            <div class="metric-value" id="metricProb">—</div>
+          </div>
+          <div class="metric-cell">
+            <div class="metric-name">Fundus Prob.</div>
+            <div class="metric-value" id="metricFundus" style="color:var(--teal)">—</div>
+          </div>
+          <div class="metric-cell">
+            <div class="metric-name">OCT Prob.</div>
+            <div class="metric-value" id="metricOct" style="color:var(--purple)">—</div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="disclaimer" id="disclaimerBox">
+        <strong>⚠ NOTICE</strong> — This tool is a research prototype and does <em>not</em>
+        constitute medical advice. Results must be reviewed by a qualified ophthalmologist.
+        Do not make clinical decisions based solely on this output.
+      </div>
+
+    </div>
+  </div>
+
+  <!-- INFO STRIP -->
+  <div class="info-strip">
+    <div class="info-cell">
+      <div class="info-cell-label">Architecture</div>
+      <div class="info-cell-value">ResNet50</div>
+    </div>
+    <div class="info-cell">
+      <div class="info-cell-label">Fusion AUC</div>
+      <div class="info-cell-value">0.8018</div>
+    </div>
+    <div class="info-cell">
+      <div class="info-cell-label">OCT AUC</div>
+      <div class="info-cell-value">0.8783</div>
+    </div>
+    <div class="info-cell">
+      <div class="info-cell-label">Fusion Method</div>
+      <div class="info-cell-value">W. Average</div>
+    </div>
+  </div>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+  const files = { fundus: null, oct: null };
+
+  /* ── Health check ─────────────────────────────────────────── */
+  (async () => {
+    try {
+      const d = await fetch('/health').then(r => r.json());
+      const dot = document.getElementById('statusDot');
+      const txt = document.getElementById('statusText');
+      if (d.models_loaded) { dot.className = 'status-dot live'; txt.textContent = 'live'; }
+      else                 { dot.className = 'status-dot demo'; txt.textContent = 'demo mode'; }
+    } catch { document.getElementById('statusText').textContent = 'offline'; }
+  })();
+
+  /* ── Drag & drop setup ────────────────────────────────────── */
+  function setupDrop(zoneId, type) {
+    const zone = document.getElementById(zoneId);
+    zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault(); zone.classList.remove('drag-over');
+      if (e.dataTransfer.files[0]) handleFile(type, e.dataTransfer.files[0]);
+    });
+  }
+  setupDrop('dropFundus', 'fundus');
+  setupDrop('dropOct',    'oct');
+
+  document.getElementById('fileFundus').addEventListener('change', e => { if (e.target.files[0]) handleFile('fundus', e.target.files[0]); });
+  document.getElementById('fileOct').addEventListener('change',    e => { if (e.target.files[0]) handleFile('oct',    e.target.files[0]); });
+  document.getElementById('removeFundus').addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); removeFile('fundus'); });
+  document.getElementById('removeOct').addEventListener('click',    e => { e.preventDefault(); e.stopPropagation(); removeFile('oct'); });
+
+  function cap(s) { return s[0].toUpperCase() + s.slice(1); }
+
+  function handleFile(type, file) {
+    if (!file.type.startsWith('image/')) { showToast('Please upload a JPG or PNG image.'); return; }
+    files[type] = file;
+    document.getElementById(`chosen${cap(type)}Name`).textContent = file.name;
+    document.getElementById(`chosen${cap(type)}`).classList.add('visible');
+    const reader = new FileReader();
+    reader.onload = e => { document.getElementById(`preview${cap(type)}`).src = e.target.result; };
+    reader.readAsDataURL(file);
+    updateUI();
+  }
+
+  function removeFile(type) {
+    files[type] = null;
+    document.getElementById(`chosen${cap(type)}`).classList.remove('visible');
+    document.getElementById(`preview${cap(type)}`).src = '';
+    document.getElementById(`file${cap(type)}`).value = '';
+    updateUI();
+  }
+
+  function updateUI() {
+    const both = files.fundus && files.oct;
+    document.getElementById('analyzeBtn').disabled = !both;
+    document.getElementById('previewStrip').className =
+      (files.fundus || files.oct) ? 'preview-strip visible' : 'preview-strip';
+    if (!both) {
+      document.getElementById('verdictCard').classList.remove('visible');
+      document.getElementById('disclaimerBox').classList.remove('visible');
+      document.getElementById('demoNotice').classList.remove('visible');
+      document.getElementById('placeholder').style.display = 'block';
+    }
+  }
+
+  /* ── Analyze ──────────────────────────────────────────────── */
+  document.getElementById('analyzeBtn').addEventListener('click', async () => {
+    if (!files.fundus || !files.oct) return;
+
+    const btn = document.getElementById('analyzeBtn');
+    btn.classList.add('loading'); btn.disabled = true;
+    document.getElementById('placeholder').style.display = 'none';
+    document.getElementById('verdictCard').classList.remove('visible');
+    document.getElementById('demoNotice').classList.remove('visible');
+    document.getElementById('disclaimerBox').classList.remove('visible');
+
+    const form = new FormData();
+    form.append('fundus', files.fundus);
+    form.append('oct',    files.oct);
+
+    try {
+      const res  = await fetch('/predict', { method: 'POST', body: form });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || `HTTP ${res.status}`); }
+      renderResults(await res.json());
+    } catch (err) {
+      showToast(err.message || 'Connection failed.');
+      document.getElementById('placeholder').style.display = 'block';
+    } finally {
+      btn.classList.remove('loading'); btn.disabled = false;
+    }
+  });
+
+  /* ── Render results ───────────────────────────────────────── */
+  function renderResults(d) {
+    const isG   = d.glaucoma_detected;
+    const pF    = d.fundus_probability;
+    const pO    = d.oct_probability;
+    const pFuse = d.fusion_probability;
+    const pct   = f1(pFuse);
+
+    if (d.demo_mode) document.getElementById('demoNotice').classList.add('visible');
+
+    const chip = document.getElementById('verdictChip');
+    chip.textContent = d.prediction;
+    chip.className   = 'verdict-chip ' + (isG ? 'glaucoma' : 'normal');
+
+    const diag = document.getElementById('verdictDiagnosis');
+    diag.textContent = isG ? 'Glaucoma Detected' : 'No Glaucoma';
+    diag.className   = 'verdict-diagnosis ' + (isG ? 'glaucoma' : 'normal');
+
+    document.getElementById('verdictSub').textContent = isG
+      ? 'Elevated risk indicators detected. Ophthalmologist review strongly recommended.'
+      : 'No significant glaucomatous indicators detected in these images.';
+
+    document.getElementById('probLabel').textContent = pct + '%';
+    const fill = document.getElementById('probFill');
+    fill.className = 'prob-fill ' + (isG ? 'glaucoma' : 'normal');
+    setTimeout(() => {
+      fill.style.width = pct + '%';
+      document.getElementById('barFundus').style.width = f1(pF) + '%';
+      document.getElementById('barOct').style.width    = f1(pO) + '%';
+      document.getElementById('barFusion').style.width = pct    + '%';
+    }, 60);
+
+    document.getElementById('valFundus').textContent = f1(pF) + '%';
+    document.getElementById('valOct').textContent    = f1(pO) + '%';
+    document.getElementById('valFusion').textContent = pct    + '%';
+
+    const predEl = document.getElementById('metricPred');
+    predEl.textContent = d.prediction;
+    predEl.style.color = isG ? 'var(--red)' : 'var(--teal)';
+
+    document.getElementById('metricProb').textContent   = pct    + '%';
+    document.getElementById('metricFundus').textContent = f1(pF) + '%';
+    document.getElementById('metricOct').textContent    = f1(pO) + '%';
+
+    document.getElementById('verdictCard').classList.add('visible');
+    document.getElementById('disclaimerBox').classList.add('visible');
+  }
+
+  function f1(v) { return (v * 100).toFixed(1); }
+
+  /* ── Toast ────────────────────────────────────────────────── */
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 4000);
+  }
+</script>
+</body>
+</html>

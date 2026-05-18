@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Keep models dir but ignore large weight files locally
+# (upload .pth files directly to HF Space via Git LFS or UI)
+models/*.pth
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
